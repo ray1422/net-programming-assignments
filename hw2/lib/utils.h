@@ -31,5 +31,6 @@ static inline struct sockaddr_in parse_sin(char *addr_str, int port) {
 }
 
 static inline int set_nonblocking(int fd) {
-    return fcntl(fd, F_SETFL, O_NONBLOCK);
+    int flags = fcntl(fd, F_GETFL, 0);
+    return fcntl(fd, F_SETFL, flags | O_NONBLOCK);
 }
