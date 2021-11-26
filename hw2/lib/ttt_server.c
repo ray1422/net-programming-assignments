@@ -11,6 +11,8 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <unistd.h>
+
+#include "utils.h"
 #define MAX_EVENTS 10
 #include "utils.h"
 #define ever \
@@ -33,7 +35,7 @@ int ttt_server(char *addr_str, int port) {
         perror("listen");
         exit(EXIT_FAILURE);
     }
-
+    set_nonblocking(listen_sock);
     struct epoll_event ev, events[MAX_EVENTS];
     int conn_sock;
 
@@ -61,13 +63,13 @@ int ttt_server(char *addr_str, int port) {
         }
 
         for (int i = 0; i < nfds; ++i) {
-            if (events[i].data.fd == listen_sock) { // new incoming connection
+            if (events[i].data.fd == listen_sock) {  // new incoming connection
                 conn_sock = accept(listen_sock, (struct sockaddr *)NULL, NULL);
                 if (conn_sock == -1) {
                     perror("accept");
                     continue;
                 }
-                setnonblocking(conn_sock);
+                set_nonblocking(conn_sock);
                 ev.events = EPOLLIN | EPOLLET;
                 ev.data.fd = conn_sock;
                 if (epoll_ctl(epoll_fd, EPOLL_CTL_ADD, conn_sock, &ev) == -1) {

@@ -1,6 +1,7 @@
 #include <argp.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include "ttt_client.h"
 
 const char *argp_program_version = "ttt-server 0.0.1";
 const char *argp_program_bug_address = "<TODO>";
@@ -58,5 +59,5 @@ int main(int argc, char **argv) {
        be reflected in arguments. */
     argp_parse(&argp, argc, argv, 0, 0, &arguments);
     printf("%s:%d\n", arguments.host, arguments.port);
-    exit(0);
+    return ttt_client(arguments.host, arguments.port);
 }
