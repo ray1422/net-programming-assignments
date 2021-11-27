@@ -12,5 +12,6 @@ file(GLOB_RECURSE SOURCES RELATIVE ${CMAKE_SOURCE_DIR} "lib/*.c")
 file(GLOB_RECURSE UTILS RELATIVE ${CMAKE_SOURCE_DIR} "utils/*.c")
 add_executable(TTT_server server_main.c ${SOURCES} ${UTILS})
 add_executable(TTT_client client_main.c ${SOURCES} ${UTILS})
-
-
+add_executable(TTT_test_user tests/test_user.c ${SOURCES} ${UTILS})
+add_test(TTT_test_user TTT_test_user)
+ENABLE_TESTING()

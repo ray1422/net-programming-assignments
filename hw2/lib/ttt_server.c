@@ -39,9 +39,6 @@ int ttt_server(char *addr_str, int port) {
     struct epoll_event ev, events[MAX_EVENTS];
     int conn_sock;
 
-    /* Code to set up listening socket, 'listen_sock',
-       (socket(), bind(), listen()) omitted. */
-
     int epoll_fd = epoll_create1(0);
     if (epoll_fd == -1) {
         perror("epoll_create1");
@@ -59,7 +56,7 @@ int ttt_server(char *addr_str, int port) {
         int nfds = epoll_wait(epoll_fd, events, MAX_EVENTS, -1);
         if (nfds == -1) {
             perror("epoll_wait");
-            exit(EXIT_FAILURE);
+            continue;
         }
 
         for (int i = 0; i < nfds; ++i) {
@@ -82,6 +79,5 @@ int ttt_server(char *addr_str, int port) {
             }
         }
     }
-
     return 0;
 }
