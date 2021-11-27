@@ -24,6 +24,12 @@ struct game {
     struct list_instance list_instance;
 };
 
+static int leave_player(int fd) {
+    clients[fd].logged_in = 0;
+    clients[fd].game = NULL;
+    strcpy(clients[fd].username, "");
+    return close(fd);
+}
 static struct game *waiting_game = NULL;
 static struct game *game_init(struct game *game) {
     if (game == NULL) game = (struct game *)malloc(sizeof(struct game));
@@ -59,6 +65,8 @@ static void game_finish(struct game *game, int winner) {
         write_uint32_to_net(game->players[0], ttt_lose);
         write_uint32_to_net(game->players[1], ttt_win);
     }
+    leave_player(game->players[0]);
+    leave_player(game->players[1]);
     free(game);
 }
 
@@ -114,7 +122,7 @@ static int login(int fd) {
     if (read_n_and_string(fd, username, 8192) > 0 && read_n_and_string(fd, password, 8192) > 0) {
         if (!user_check(username, password)) {
             write_uint32_to_net(fd, ttt_login_failed);
-            close(fd);
+            leave_player(fd);
             return -1;
         } else {
             write_uint32_to_net(fd, ttt_login_success);
@@ -161,8 +169,7 @@ int client_handle(int fd) {
     for (;;) {
         uint32_t action_id;
         if (read_uint32_from_net(fd, &action_id) < 0) {
-            close(fd);
-
+            leave_player(fd);
             return 1;
         }
 

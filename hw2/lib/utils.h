@@ -40,7 +40,6 @@ static inline int set_nonblocking(int fd) {
 static inline int read_uint32_from_net(int fd, uint32_t *ret) {
     uint32_t n;
     if (read(fd, (char *)&n, sizeof(n)) < 0) {
-        close(fd);
         return -1;
     }
     n = ntohl(n);
@@ -58,18 +57,15 @@ static inline int read_n_and_string(int fd, char *buf, int max_n) {
     uint32_t n;
     if (read_uint32_from_net(fd, &n) < 0) {
         perror("read");
-        close(fd);
         return -1;
     }
 
     if (n > max_n - 1) {
         fprintf(stderr, "string too long\n");
-        close(fd);
         return -1;
     }
     if (read(fd, buf, n) < 0) {
         fprintf(stderr, "read failed\n");
-        close(fd);
         return -1;
     }
     buf[n] = '\0';
