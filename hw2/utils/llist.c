@@ -3,13 +3,12 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-
 typedef struct IntNode {
     int v;
     struct list_instance list_instance;
 } IntNode;
 
-static int llist_example() {
+void llist_example() {
     IntNode *n0 = (IntNode *)malloc(sizeof(IntNode));
     n0->v = 10;
     IntNode *n1 = (IntNode *)malloc(sizeof(IntNode));

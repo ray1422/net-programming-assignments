@@ -1,5 +1,6 @@
 #include <arpa/inet.h>
 #include <assert.h>
+#include <gc.h>
 #include <stdio.h>
 #include <string.h>
 #include <unistd.h>
@@ -23,19 +24,23 @@ struct game {
     int turn;
     struct list_instance list_instance;
 };
-static int free_game_room_front = 0;
-static int free_game_room_end = 0;
-static int free_game_room[8192];
+
+
+static struct game *waiting_game = NULL;
 struct client clients[MAX_CLIENTS];  // 靜態宣告，C語言沒有 Map 麻煩死。
+
 static int leave_player(int fd) {
+    if (fd <= 0) return 0;
+    if (clients->game == waiting_game) waiting_game = NULL;  // leave waiting game too.
     clients[fd].logged_in = 0;
     clients[fd].game = NULL;
     strcpy(clients[fd].username, "");
+    fprintf(stderr, "close client %d\n", fd);
     return close(fd);
 }
-static struct game *waiting_game = NULL;
+
 static struct game *game_init(struct game *game) {
-    if (game == NULL) game = (struct game *)malloc(sizeof(struct game));
+    if (game == NULL) game = (struct game *)GC_malloc(sizeof(struct game));
     assert(game != NULL);
     for (int i = 0; i < 3; i++)
         for (int j = 0; j < 3; j++) game->grid[i][j] = -1;
@@ -48,10 +53,8 @@ static void game_finish(struct game *game, int winner);
 static void game_start(struct game *game) {
     game->turn = rand() % 2;
     int ret = 0;
-    ret |= write_uint32_to_net(game->players[0], ttt_do_step);
-    ret |= write_uint32_to_net(game->players[0], game->players[game->turn]);
-    ret |= write_uint32_to_net(game->players[1], ttt_do_step);
-    ret |= write_uint32_to_net(game->players[1], game->players[game->turn]);
+    ret |= write_uint32_to_net(game->players[game->turn], ttt_do_step);
+    ret |= write_uint32_to_net(game->players[game->turn], game->players[game->turn]);
     if (ret < 0) {
         game_finish(game, -1);
     }
@@ -70,14 +73,20 @@ static void game_finish(struct game *game, int winner) {
     }
     leave_player(game->players[0]);
     leave_player(game->players[1]);
-    free(game);
+    // free(game); // use GC_malloc so free is no longger needed.
 }
 
 // non-zero return for invalid step
-static int game_step(struct game *game, int x, int y) {
+static int game_step(struct game *game, uint32_t x, uint32_t y) {
+    if (x > 2 || y > 2) return 1;
     if (game->grid[x][y] != -1) return 1;
-    game->grid[x][y] = game->turn;
+    write_uint32_to_net(game->players[!game->turn], ttt_do_step);
+    write_uint32_to_net(game->players[!game->turn], game->players[game->turn]);
+    write_uint32_to_net(game->players[!game->turn], x);
+    write_uint32_to_net(game->players[!game->turn], y);
+    game->grid[x][y] = game->players[game->turn];
     game->turn = !game->turn;
+    return 0;
 }
 
 // -1 if still no winner, -2 if tie, else winner's fd
@@ -109,15 +118,25 @@ int client_new(int fd) {
         close(fd);
         return -1;
     }
+    if (clients[fd].logged_in) {
+        if (waiting_game->players[0] == fd) {
+            waiting_game = NULL;
+        }
+    }
     clients[fd].logged_in = 0;
     clients[fd].game = NULL;
     return 0;
 }
 
 static int login(int fd) {
-    uint32_t n;
-    static char username[8192], password[8192];
-    if (read_n_and_string(fd, username, 8192) > 0 && read_n_and_string(fd, password, 8192) > 0) {
+    if (clients[fd].logged_in) {
+        if (waiting_game != NULL && waiting_game->players[0] == fd) {
+            waiting_game = NULL;
+        }
+    }
+    char username[8192], password[8192];
+    if (read_n_and_string(fd, username, 8192) != -1 &&
+        read_n_and_string(fd, password, 8192) != -1) {
         if (!user_check(username, password)) {
             write_uint32_to_net(fd, ttt_login_failed);
             leave_player(fd);
@@ -127,6 +146,9 @@ static int login(int fd) {
             write_uint32_to_net(fd, (uint32_t)fd);
             printf("%d logged in\n", fd);
         }
+    } else {
+        leave_player(fd);
+        return 1;
     }
     clients[fd].logged_in = 1;
     // search a game room for this client
@@ -150,7 +172,7 @@ static int do_step(int fd) {
         game_finish(game, game->players[game->turn]);
     }
     uint32_t x, y;
-    if (read_uint32_from_net(fd, &x) || read_uint32_from_net(fd, &x)) {  // inavalid step
+    if (read_uint32_from_net(fd, &x) < 0 || read_uint32_from_net(fd, &y) < 0) {  // inavalid step
         game_finish(game, game->players[!game->turn]);
         return 1;
     }
@@ -160,6 +182,8 @@ static int do_step(int fd) {
         game_finish(game, result);
         return 1;
     }
+    write_uint32_to_net(game->players[game->turn], ttt_do_step);
+    write_uint32_to_net(game->players[game->turn], game->players[game->turn]);
     return 0;
 }
 
@@ -167,10 +191,8 @@ int client_handle(int fd) {
     for (;;) {
         uint32_t action_id;
         if (read_uint32_from_net(fd, &action_id) < 0) {
-            leave_player(fd);
-            return 1;
+            break;
         }
-
         switch (action_id) {
             case ttt_login:
                 login(fd);
@@ -181,4 +203,5 @@ int client_handle(int fd) {
                 break;
         }
     }
+    return 0;
 }

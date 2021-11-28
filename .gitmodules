@@ -1,0 +1,3 @@
+[submodule "hw2/bdwgc"]
+	path = hw2/bdwgc
+	url = https://github.com/ivmai/bdwgc.git

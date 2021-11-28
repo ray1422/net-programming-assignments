@@ -69,4 +69,5 @@ static inline int read_n_and_string(int fd, char *buf, int max_n) {
         return -1;
     }
     buf[n] = '\0';
+    return 0;
 }
