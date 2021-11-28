@@ -23,7 +23,10 @@ struct game {
     int turn;
     struct list_instance list_instance;
 };
-
+static int free_game_room_front = 0;
+static int free_game_room_end = 0;
+static int free_game_room[8192];
+struct client clients[MAX_CLIENTS];  // 靜態宣告，C語言沒有 Map 麻煩死。
 static int leave_player(int fd) {
     clients[fd].logged_in = 0;
     clients[fd].game = NULL;
@@ -100,11 +103,6 @@ static int game_result(struct game *game) {
     }
     return -2;
 }
-
-static int free_game_room_front = 0;
-static int free_game_room_end = 0;
-static int free_game_room[8192];
-struct client clients[MAX_CLIENTS];  // 靜態宣告，C語言沒有 Map 麻煩死。
 
 int client_new(int fd) {
     if (fd > MAX_CLIENTS) {
