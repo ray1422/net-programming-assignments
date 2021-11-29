@@ -3,11 +3,14 @@
 #include <fcntl.h>
 #include <netdb.h>
 #include <netinet/in.h>
+#include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <strings.h>
 #include <sys/socket.h>
 #include <unistd.h>
+
+#include "ttt_server.h"
 
 static inline struct sockaddr_in parse_sin(char *addr_str, int port) {
     struct sockaddr_in sin;
@@ -38,6 +41,7 @@ static inline int set_nonblocking(int fd) {
 
 // non-zero return if failed
 static inline int read_uint32_from_net(int fd, uint32_t *ret) {
+    *ret = 0;
     uint32_t n;
     if (read(fd, (char *)&n, sizeof(n)) < 0) {
         return -1;
@@ -47,10 +51,20 @@ static inline int read_uint32_from_net(int fd, uint32_t *ret) {
     return 0;
 }
 
+static sig_atomic_t broken_pipe_happened = 0;
+static inline void broken_pipe_handler() { broken_pipe_happened = 1; }
 
 static inline int write_uint32_to_net(int fd, uint32_t n) {
     n = htonl(n);
-    return write(fd, &n, sizeof(n));
+    broken_pipe_happened = 0;
+    signal(SIGPIPE, broken_pipe_handler);
+    int ret = write(fd, &n, sizeof(n));
+
+    if (broken_pipe_happened) {
+        leave_player(fd);
+        return -1;
+    }
+    return ret;
 }
 
 static inline int read_n_and_string(int fd, char *buf, int max_n) {

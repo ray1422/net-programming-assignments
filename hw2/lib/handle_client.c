@@ -15,6 +15,7 @@
 struct client {
     struct game *game;
     int logged_in;
+    int inviting;
     char username[8192];
 };
 struct game {
@@ -25,15 +26,15 @@ struct game {
     struct list_instance list_instance;
 };
 
-
-static struct game *waiting_game = NULL;
 struct client clients[MAX_CLIENTS];  // 靜態宣告，C語言沒有 Map 麻煩死。
-
-static int leave_player(int fd) {
-    if (fd <= 0) return 0;
-    if (clients->game == waiting_game) waiting_game = NULL;  // leave waiting game too.
-    clients[fd].logged_in = 0;
+void client_end_game(int fd) {
+    if (fd <= 0) return;
     clients[fd].game = NULL;
+    clients[fd].inviting = 0;
+}
+int leave_player(int fd) {
+    client_end_game(fd);
+    clients[fd].logged_in = 0;
     strcpy(clients[fd].username, "");
     fprintf(stderr, "close client %d\n", fd);
     return close(fd);
@@ -53,6 +54,8 @@ static void game_finish(struct game *game, int winner);
 static void game_start(struct game *game) {
     game->turn = rand() % 2;
     int ret = 0;
+    ret |= write_uint32_to_net(game->players[0], ttt_start);
+    ret |= write_uint32_to_net(game->players[1], ttt_start);
     ret |= write_uint32_to_net(game->players[game->turn], ttt_do_step);
     ret |= write_uint32_to_net(game->players[game->turn], game->players[game->turn]);
     if (ret < 0) {
@@ -71,8 +74,8 @@ static void game_finish(struct game *game, int winner) {
         write_uint32_to_net(game->players[0], ttt_lose);
         write_uint32_to_net(game->players[1], ttt_win);
     }
-    leave_player(game->players[0]);
-    leave_player(game->players[1]);
+    client_end_game(game->players[0]);
+    client_end_game(game->players[1]);
     // free(game); // use GC_malloc so free is no longger needed.
 }
 
@@ -118,11 +121,7 @@ int client_new(int fd) {
         close(fd);
         return -1;
     }
-    if (clients[fd].logged_in) {
-        if (waiting_game->players[0] == fd) {
-            waiting_game = NULL;
-        }
-    }
+
     clients[fd].logged_in = 0;
     clients[fd].game = NULL;
     return 0;
@@ -130,9 +129,7 @@ int client_new(int fd) {
 
 static int login(int fd) {
     if (clients[fd].logged_in) {
-        if (waiting_game != NULL && waiting_game->players[0] == fd) {
-            waiting_game = NULL;
-        }
+        clients[fd].logged_in = 0;
     }
     char username[8192], password[8192];
     if (read_n_and_string(fd, username, 8192) != -1 &&
@@ -150,21 +147,90 @@ static int login(int fd) {
         leave_player(fd);
         return 1;
     }
+    clients[fd].inviting = 0;
     clients[fd].logged_in = 1;
-    // search a game room for this client
-    if (waiting_game == NULL) {
-        waiting_game = game_init(NULL);
-        waiting_game->players[0] = fd;
-        clients[fd].game = waiting_game;
-    } else {
-        waiting_game->players[1] = fd;
-        clients[fd].game = waiting_game;
-        game_start(waiting_game);
-        waiting_game = NULL;
-    }
+    clients[fd].game = NULL;
+    // // search a game room for this client
+    // if (waiting_game == NULL) {
+    //     waiting_game = game_init(NULL);
+    //     waiting_game->players[0] = fd;
+    //     clients[fd].game = waiting_game;
+    // } else {
+    //     waiting_game->players[1] = fd;
+    //     clients[fd].game = waiting_game;
+    //     game_start(waiting_game);
+    //     waiting_game = NULL;
+    // }
     return 0;
 }
 
+static int do_list(int fd) {
+    int n = 0;
+    int cid[MAX_CLIENTS];
+    for (int i = 0; i < MAX_CLIENTS; i++) {
+        if (i == fd) continue;
+        if (clients[i].logged_in && clients[i].game == NULL && clients[i].inviting == 0) {
+            cid[n++] = i;
+        }
+    }
+    int ret = 0;
+    ret |= write_uint32_to_net(fd, ttt_list_clients);
+    ret |= write_uint32_to_net(fd, n);
+    if (ret < 0) {
+        leave_player(fd);
+        return ret;
+    }
+    for (int i = 0; i < n; i++) {
+        ret |= write_uint32_to_net(fd, cid[i]);
+        if (ret < 0) {
+            leave_player(fd);
+            return ret;
+        }
+    }
+    return ret;
+}
+
+void do_invite_accept(int fd) {
+    int a = fd, b = clients[fd].inviting;
+    clients[a].game = clients[b].game = game_init(NULL);
+    clients[a].game->players[0] = a;
+    clients[a].game->players[1] = b;
+    game_start(clients[a].game);
+}
+
+void do_invite_discard(int fd) {
+    clients[clients[fd].inviting].inviting = 0;
+    if (write_uint32_to_net(clients[fd].inviting, ttt_invite_discard) < 0) {
+        leave_player(clients[fd].inviting);
+    }
+    clients[fd].inviting = 0;
+}
+
+static int do_invite(int fd) {
+    uint32_t invited_id = 0;
+    if (read_uint32_from_net(fd, &invited_id) < 0) {
+        leave_player(fd);
+        return -1;
+    }
+    fprintf(stderr, "%d invites %u\n", fd, invited_id);
+    if (invited_id == fd || invited_id >= MAX_CLIENTS || !clients[invited_id].logged_in ||
+        clients[invited_id].game != NULL || clients[invited_id].inviting != 0) {
+        write_uint32_to_net(fd, 0);
+        return -1;
+    }
+    int invited_stat = 0;
+    invited_stat |= write_uint32_to_net(invited_id, ttt_invite);
+    invited_stat |= write_uint32_to_net(invited_id, fd);
+    if (invited_stat < 0) {
+        leave_player(invited_id);
+        write_uint32_to_net(fd, 0);
+        return -1;
+    }
+    clients[fd].inviting = invited_id;
+    clients[invited_id].inviting = fd;
+    write_uint32_to_net(fd, 1);
+    return 0;
+}
 static int do_step(int fd) {
     struct game *game = clients[fd].game;
     if (game->players[game->turn] == fd) {
@@ -199,7 +265,21 @@ int client_handle(int fd) {
                 break;
             case ttt_do_step:
                 do_step(fd);
+                break;
+            case ttt_invite:
+                do_invite(fd);
+                break;
+            case ttt_list_clients:
+                do_list(fd);
+                break;
+            case ttt_invite_accept:
+                do_invite_accept(fd);
+                break;
+            case ttt_invite_discard:
+                do_invite_discard(fd);
+                break;
             default:
+                return 1;
                 break;
         }
     }

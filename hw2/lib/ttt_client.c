@@ -4,16 +4,16 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/epoll.h>
 #include <unistd.h>
 
 #include "ttt_action.h"
 #include "utils.h"
-
+static int game_loop(int fd, int player_id);
 static char buf[8192];
 
 static int gird[3][3];
 static void dump_gird() {
-
     const char GI[] = " OX";
     puts("\033c");
     printf("+---+---+---+\n");
@@ -75,6 +75,8 @@ static int game_loop(int fd, int player_id) {
         for (int j = 0; j < 3; j++) {
             gird[i][j] = 0;
         }
+    dump_gird();
+    puts("waiting...");
     for (;;) {
         uint32_t action;
         read_uint32_from_net(fd, &action);
@@ -140,6 +142,140 @@ static int game_loop(int fd, int player_id) {
         }
     }
 }
+static int invite(int fd, uint32_t player_id) {
+    char *cur = buf;
+    player_id = htonl(player_id);
+    uint32_t action_invite = htonl(ttt_invite);
+    memcpy(cur, &action_invite, sizeof(action_invite));
+    cur += sizeof(action_invite);
+    memcpy(cur, &player_id, sizeof(player_id));
+    cur += sizeof(player_id);
+    write(fd, buf, cur - buf);
+
+    uint32_t ret;
+    read_uint32_from_net(fd, &ret);
+    return ret;
+}
+
+// return: 1: accept, 0: discard.
+static int invite_request(int fd) {
+    uint32_t invitor = 0;
+    if (read_uint32_from_net(fd, &invitor) != 0) {
+        perror("network error");
+        exit(EXIT_FAILURE);
+    }
+    printf("[\033[33;1;5m*\033[0m] %u invites you for a new game! Do you accept it? (y/n)\n", invitor);
+    char answer[8192];
+    scanf("%8000s", answer);
+    if (!strcmp(answer, "y")) {
+        write_uint32_to_net(fd, ttt_invite_accept);
+        return 1;
+    } else {
+        write_uint32_to_net(fd, ttt_invite_discard);
+        return 0;
+    }
+}
+
+// return when the game finished
+static int lobby(int fd, uint32_t player_id) {
+RESTART:
+    uint32_t n_clients = 0, action = 0;
+    while (1) {
+        write_uint32_to_net(fd, ttt_list_clients);
+    PARSE_ACTION:
+        if (read_uint32_from_net(fd, &action) != 0) {
+            perror("network error");
+            exit(EXIT_FAILURE);
+        }
+        switch (action) {
+            case ttt_list_clients:
+                if (read_uint32_from_net(fd, &n_clients) != 0) {
+                    perror("network error");
+                    exit(EXIT_FAILURE);
+                }
+                if (n_clients == 0) {
+                    printf("Nobody online now, waiting...\n");
+                    sleep(3);
+                } else {
+                    printf("There %s %u players: \n", n_clients == 1 ? "is" : "are", n_clients);
+                    for (int i = 0; i < n_clients; i++) {
+                        uint32_t u = 0;
+                        read_uint32_from_net(fd, &u);
+                        printf(" %4u", u);
+                    }
+                    printf(
+                        "\nEnter player ID to invite for a game, or waiting for others inviting "
+                        "you:\n");
+                    struct epoll_event ev;
+                    ev.events = EPOLLIN;
+                    ev.data.fd = fd;
+                    int epoll_fd = epoll_create1(0);
+                    if (epoll_fd == -1) {
+                        perror("epoll_create1");
+                        exit(EXIT_FAILURE);
+                    }
+
+                    if (epoll_ctl(epoll_fd, EPOLL_CTL_ADD, fd, &ev) == -1) {
+                        perror("epoll_ctl: fd");
+                        exit(EXIT_FAILURE);
+                    }
+
+                    ev.events = EPOLLIN;
+                    ev.data.fd = STDIN_FILENO;
+                    if (epoll_ctl(epoll_fd, EPOLL_CTL_ADD, STDIN_FILENO, &ev) == -1) {
+                        perror("epoll_ctl: stdin");
+                        exit(EXIT_FAILURE);
+                    }
+                    while (1) {
+                        int nfds = epoll_wait(epoll_fd, &ev, 1, -1);
+                        if (nfds < 1) {
+                            perror("epoll_wait");
+                            continue;
+                        }
+                        if (ev.data.fd == STDIN_FILENO) {
+                            uint32_t player_id;
+                            if (scanf("%u", &player_id) == EOF) {
+                                printf("bye\n");
+                                exit(0);
+                            }
+                            int result = invite(fd, player_id);
+                            if (!result) {
+                                printf("player %u is not online, or in another game already.\n",
+                                       player_id);
+                                close(epoll_fd);
+                                goto RESTART;
+                            } else {
+                                printf("Waiting for [%u]'s reply..\n", player_id);
+                                close(epoll_fd);
+                                goto PARSE_ACTION;
+                            }
+                        } else {
+                            close(epoll_fd);
+                            goto PARSE_ACTION;
+                        }
+                    }
+                }
+                break;
+            case ttt_invite:
+                if (invite_request(fd)) goto PARSE_ACTION;
+                goto RESTART;
+                break;
+            case ttt_start:
+                game_loop(fd, player_id);
+                goto RESTART;
+                break;
+            case ttt_invite_discard:
+                printf("[%u] discards your invitation!\n", player_id);
+                goto RESTART;
+                break;
+            default:
+                printf("unknown action_id: %u\n", action);
+                break;
+        }
+    }
+
+    return 0;
+}
 int ttt_client(char *addr_str, int port) {
     int ret;
     struct sockaddr_in sin = parse_sin(addr_str, port);
@@ -164,6 +300,7 @@ int ttt_client(char *addr_str, int port) {
     uint32_t player_id = 0;
     read_uint32_from_net(sockfd, &player_id);
     printf("player ID: %u\n", player_id);
-    game_loop(sockfd, player_id);
+    lobby(sockfd, player_id);
+
     return 0;
 }
