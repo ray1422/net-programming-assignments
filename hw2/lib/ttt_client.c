@@ -157,7 +157,7 @@ static int invite(int fd, uint32_t player_id) {
     return ret;
 }
 
-// return: 1: accept, 0: discard.
+// return: 1: accept, 0: deny.
 static int invite_request(int fd) {
     uint32_t invitor = 0;
     if (read_uint32_from_net(fd, &invitor) != 0) {
@@ -171,7 +171,7 @@ static int invite_request(int fd) {
         write_uint32_to_net(fd, ttt_invite_accept);
         return 1;
     } else {
-        write_uint32_to_net(fd, ttt_invite_discard);
+        write_uint32_to_net(fd, ttt_invite_deny);
         return 0;
     }
 }
@@ -264,8 +264,8 @@ RESTART:
                 game_loop(fd, player_id);
                 goto RESTART;
                 break;
-            case ttt_invite_discard:
-                printf("[%u] discards your invitation!\n", player_id);
+            case ttt_invite_deny:
+                printf("[%u] declined your invitation!\n", player_id);
                 goto RESTART;
                 break;
             default:

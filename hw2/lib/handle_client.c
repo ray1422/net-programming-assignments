@@ -198,9 +198,9 @@ void do_invite_accept(int fd) {
     game_start(clients[a].game);
 }
 
-void do_invite_discard(int fd) {
+void do_invite_deny(int fd) {
     clients[clients[fd].inviting].inviting = 0;
-    if (write_uint32_to_net(clients[fd].inviting, ttt_invite_discard) < 0) {
+    if (write_uint32_to_net(clients[fd].inviting, ttt_invite_deny) < 0) {
         leave_player(clients[fd].inviting);
     }
     clients[fd].inviting = 0;
@@ -275,8 +275,8 @@ int client_handle(int fd) {
             case ttt_invite_accept:
                 do_invite_accept(fd);
                 break;
-            case ttt_invite_discard:
-                do_invite_discard(fd);
+            case ttt_invite_deny:
+                do_invite_deny(fd);
                 break;
             default:
                 return 1;

@@ -6,7 +6,7 @@ enum ttt_action {
     ttt_list_clients,
     ttt_invite,
     ttt_invite_accept,
-    ttt_invite_discard,
+    ttt_invite_deny,
     ttt_start,
     ttt_do_step,
     ttt_win,
