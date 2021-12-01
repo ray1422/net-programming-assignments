@@ -81,7 +81,7 @@ static int game_loop(int fd, int player_id) {
         uint32_t action;
         read_uint32_from_net(fd, &action);
         switch (action) {
-            case ttt_do_step:
+            case ttt_do_step: {
                 uint32_t act_player;
                 read_uint32_from_net(fd, &act_player);
                 if (act_player == player_id) {
@@ -120,7 +120,7 @@ static int game_loop(int fd, int player_id) {
                     gird[x][y] = 2;
                     dump_gird();
                 }
-                break;
+            } break;
 
             case ttt_win:
                 printf("win!\n");
@@ -164,7 +164,8 @@ static int invite_request(int fd) {
         perror("network error");
         exit(EXIT_FAILURE);
     }
-    printf("[\033[33;1;5m*\033[0m] %u invites you for a new game! Do you accept it? (y/n)\n", invitor);
+    printf("[\033[33;1;5m*\033[0m] %u invites you for a new game! Do you accept it? (y/n)\n",
+           invitor);
     char answer[8192];
     scanf("%8000s", answer);
     if (!strcmp(answer, "y")) {
@@ -178,7 +179,7 @@ static int invite_request(int fd) {
 
 // return when the game finished
 static int lobby(int fd, uint32_t player_id) {
-RESTART:
+RESTART:;
     uint32_t n_clients = 0, action = 0;
     while (1) {
         write_uint32_to_net(fd, ttt_list_clients);
@@ -188,7 +189,7 @@ RESTART:
             exit(EXIT_FAILURE);
         }
         switch (action) {
-            case ttt_list_clients:
+            case ttt_list_clients: {
                 if (read_uint32_from_net(fd, &n_clients) != 0) {
                     perror("network error");
                     exit(EXIT_FAILURE);
@@ -255,7 +256,7 @@ RESTART:
                         }
                     }
                 }
-                break;
+            } break;
             case ttt_invite:
                 if (invite_request(fd)) goto PARSE_ACTION;
                 goto RESTART;
