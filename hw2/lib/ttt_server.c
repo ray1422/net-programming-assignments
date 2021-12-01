@@ -20,7 +20,7 @@
     ;        \
     ;
 
-static void clean_zimbie_clients() {
+static void clean_zombie_clients() {
     for (int i = 0; i < MAX_CLIENTS; i++) {
         if (clients[i].logged_in) {
             write_uint32_to_net(i, ttt_ping);
@@ -68,7 +68,7 @@ int ttt_server(char *addr_str, int port) {
             continue;
         }
         if (rand() % 2) {
-            clean_zimbie_clients();
+            clean_zombie_clients();
         }
         for (int i = 0; i < nfds; ++i) {
             if (events[i].data.fd == listen_sock) {  // new incoming connection
