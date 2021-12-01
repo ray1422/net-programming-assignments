@@ -60,7 +60,7 @@ static inline int write_uint32_to_net(int fd, uint32_t n) {
     signal(SIGPIPE, broken_pipe_handler);
     int ret = write(fd, &n, sizeof(n));
 
-    if (broken_pipe_happened) {
+    if (ret< 0 || broken_pipe_happened) {
         leave_player(fd);
         return -1;
     }
