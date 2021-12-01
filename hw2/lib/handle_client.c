@@ -210,6 +210,7 @@ static int do_invite(int fd) {
     fprintf(stderr, "%d invites %u\n", fd, invited_id);
     if (invited_id == fd || invited_id >= MAX_CLIENTS || !clients[invited_id].logged_in ||
         clients[invited_id].game != NULL || clients[invited_id].inviting != 0) {
+        write_uint32_to_net(fd, ttt_invite_result);
         write_uint32_to_net(fd, 0);
         return -1;
     }
@@ -218,11 +219,13 @@ static int do_invite(int fd) {
     invited_stat |= write_uint32_to_net(invited_id, fd);
     if (invited_stat < 0) {
         leave_player(invited_id);
+        write_uint32_to_net(fd, ttt_invite_result);
         write_uint32_to_net(fd, 0);
         return -1;
     }
     clients[fd].inviting = invited_id;
     clients[invited_id].inviting = fd;
+    write_uint32_to_net(fd, ttt_invite_result);
     write_uint32_to_net(fd, 1);
     return 0;
 }

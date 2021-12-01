@@ -241,6 +241,11 @@ RESTART:;
                                 printf("bye\n");
                                 exit(0);
                             }
+                            uint32_t action_id = 0;
+                            do {
+                                read_uint32_from_net(fd, &action_id);
+                            } while (action_id == ttt_invite_result);
+
                             int result = invite(fd, player_id);
                             if (!result) {
                                 printf("player %u is not online, or in another game already.\n",
