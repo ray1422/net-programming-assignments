@@ -153,10 +153,7 @@ static int invite(int fd, uint32_t player_id) {
     memcpy(cur, &player_id, sizeof(player_id));
     cur += sizeof(player_id);
     write(fd, buf, cur - buf);
-
-    uint32_t ret;
-    read_uint32_from_net(fd, &ret);
-    return ret;
+    printf("inviting...\n");
 }
 
 // return: 1: accept, 0: deny.
@@ -191,6 +188,17 @@ RESTART:;
             exit(EXIT_FAILURE);
         }
         switch (action) {
+            case ttt_invite_result: {
+                uint32_t result;
+                read_uint32_from_net(fd, &result);
+                if (!result) {
+                    printf("player %u is not online, or in another game already.\n", player_id);
+                    goto RESTART;
+                } else {
+                    printf("Waiting for reply..\n");
+                    goto PARSE_ACTION;
+                }
+            } break;
             case ttt_list_clients: {
                 if (read_uint32_from_net(fd, &n_clients) != 0) {
                     perror("network error");
@@ -209,6 +217,7 @@ RESTART:;
                     printf(
                         "\nEnter player ID to invite for a game, or waiting for others inviting "
                         "you:\n");
+                WAITING_INPUT:
                     struct epoll_event ev;
                     ev.events = EPOLLIN;
                     ev.data.fd = fd;
@@ -241,22 +250,9 @@ RESTART:;
                                 printf("bye\n");
                                 exit(0);
                             }
-                            uint32_t action_id = 0;
-                            do {
-                                read_uint32_from_net(fd, &action_id);
-                            } while (action_id == ttt_invite_result);
-
                             int result = invite(fd, player_id);
-                            if (!result) {
-                                printf("player %u is not online, or in another game already.\n",
-                                       player_id);
-                                close(epoll_fd);
-                                goto RESTART;
-                            } else {
-                                printf("Waiting for [%u]'s reply..\n", player_id);
-                                close(epoll_fd);
-                                goto PARSE_ACTION;
-                            }
+                            close(epoll_fd);
+                            goto PARSE_ACTION;
                         } else {
                             close(epoll_fd);
                             goto PARSE_ACTION;
@@ -277,7 +273,7 @@ RESTART:;
                 goto RESTART;
                 break;
             case ttt_ping:
-                goto PARSE_ACTION;
+                goto WAITING_INPUT;
                 break;
             default:
                 printf("unknown action_id: %u\n", action);

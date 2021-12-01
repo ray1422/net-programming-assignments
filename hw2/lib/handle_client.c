@@ -12,7 +12,6 @@
 #include "utils/hash_map.h"
 #include "utils/llist.h"
 
-
 struct game {
     int game_id;
     int grid[3][3];  // -1 for null, 0 1 for players
@@ -208,9 +207,9 @@ static int do_invite(int fd) {
         return -1;
     }
     fprintf(stderr, "%d invites %u\n", fd, invited_id);
+    write_uint32_to_net(fd, ttt_invite_result);
     if (invited_id == fd || invited_id >= MAX_CLIENTS || !clients[invited_id].logged_in ||
         clients[invited_id].game != NULL || clients[invited_id].inviting != 0) {
-        write_uint32_to_net(fd, ttt_invite_result);
         write_uint32_to_net(fd, 0);
         return -1;
     }
@@ -219,13 +218,11 @@ static int do_invite(int fd) {
     invited_stat |= write_uint32_to_net(invited_id, fd);
     if (invited_stat < 0) {
         leave_player(invited_id);
-        write_uint32_to_net(fd, ttt_invite_result);
         write_uint32_to_net(fd, 0);
         return -1;
     }
     clients[fd].inviting = invited_id;
     clients[invited_id].inviting = fd;
-    write_uint32_to_net(fd, ttt_invite_result);
     write_uint32_to_net(fd, 1);
     return 0;
 }

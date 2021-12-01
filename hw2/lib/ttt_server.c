@@ -67,7 +67,7 @@ int ttt_server(char *addr_str, int port) {
             perror("epoll_wait");
             continue;
         }
-        if (rand() % 2) {
+        if (rand() % 100 > 30) {
             clean_zombie_clients();
         }
         for (int i = 0; i < nfds; ++i) {
