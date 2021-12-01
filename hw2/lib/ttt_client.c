@@ -81,6 +81,7 @@ static int game_loop(int fd, int player_id) {
         uint32_t action;
         read_uint32_from_net(fd, &action);
         switch (action) {
+            case ttt_ping: break;
             case ttt_do_step: {
                 uint32_t act_player;
                 read_uint32_from_net(fd, &act_player);

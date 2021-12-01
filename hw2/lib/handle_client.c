@@ -12,12 +12,7 @@
 #include "utils/hash_map.h"
 #include "utils/llist.h"
 
-struct client {
-    struct game *game;
-    int logged_in;
-    int inviting;
-    char username[8192];
-};
+
 struct game {
     int game_id;
     int grid[3][3];  // -1 for null, 0 1 for players

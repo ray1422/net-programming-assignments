@@ -12,12 +12,21 @@
 #include <sys/types.h>
 #include <unistd.h>
 
+#include "ttt_action.h"
 #include "utils.h"
 #define MAX_EVENTS 10
 #include "utils.h"
 #define ever \
     ;        \
     ;
+
+static void clean_zimbie_clients() {
+    for (int i = 0; i < MAX_CLIENTS; i++) {
+        if (clients[i].logged_in) {
+            write_uint32_to_net(i, ttt_ping);
+        }
+    }
+}
 int ttt_server(char *addr_str, int port) {
     unsigned val = 1;
     struct sockaddr_in sin = parse_sin(addr_str, port);
@@ -58,7 +67,9 @@ int ttt_server(char *addr_str, int port) {
             perror("epoll_wait");
             continue;
         }
-
+        if (rand() % 2) {
+            clean_zimbie_clients();
+        }
         for (int i = 0; i < nfds; ++i) {
             if (events[i].data.fd == listen_sock) {  // new incoming connection
                 conn_sock = accept(listen_sock, (struct sockaddr *)NULL, NULL);

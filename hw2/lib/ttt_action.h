@@ -11,5 +11,6 @@ enum ttt_action {
     ttt_do_step,
     ttt_win,
     ttt_lose,
-    ttt_tie
+    ttt_tie,
+    ttt_ping
 };
